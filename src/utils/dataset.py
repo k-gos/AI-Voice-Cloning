@@ -38,6 +38,7 @@ class VoiceCloningDataset(Dataset):
             use_cache: Whether to cache audio files
         """
         self.root_path = Path(metadata_path).parent
+        logger.info(f"Dataset root path: {self.root_path}")
         
         # Load config first to get emotions list
         with open(config_path, 'r') as f:
@@ -48,8 +49,10 @@ class VoiceCloningDataset(Dataset):
         if not self.emotions:
             self.emotions = ['neutral']
         self.emotion_to_idx = {emotion: idx for idx, emotion in enumerate(self.emotions)}
+        logger.info(f"Using emotions: {self.emotions}")
         
         # Load metadata with explicit dtypes
+        logger.info(f"Loading metadata from: {metadata_path}")
         self.metadata = pd.read_csv(
             metadata_path,
             dtype={
@@ -61,11 +64,39 @@ class VoiceCloningDataset(Dataset):
                 'duration': float
             }
         )
+        logger.info(f"Loaded metadata with {len(self.metadata)} entries")
+        
+        # Print first few rows for debugging
+        logger.info("\nFirst few metadata entries:")
+        logger.info(self.metadata.head())
         
         # Convert relative audio paths to absolute paths
-        self.metadata['audio_path'] = self.metadata['audio_path'].apply(
-            lambda x: str(self.root_path / x) if not os.path.isabs(x) else x
-        )
+        def convert_audio_path(audio_path):
+            if pd.isna(audio_path):
+                return None
+            
+            # If it's already an absolute path and exists, use it
+            if os.path.isabs(audio_path) and os.path.exists(audio_path):
+                return audio_path
+                
+            # Try different path combinations
+            possible_paths = [
+                self.root_path / audio_path,  # Relative to metadata.csv location
+                self.root_path / 'audio' / audio_path,  # Under audio subdirectory
+                Path(audio_path),  # As is
+                Path('audio') / audio_path,  # Under audio directory relative to current
+            ]
+            
+            for path in possible_paths:
+                if path.exists():
+                    logger.debug(f"Found audio file at: {path}")
+                    return str(path)
+            
+            logger.debug(f"Could not find audio file for path: {audio_path}")
+            return None
+        
+        logger.info("Converting audio paths...")
+        self.metadata['audio_path'] = self.metadata['audio_path'].apply(convert_audio_path)
         
         # Handle missing text values
         if self.metadata['text'].isna().any():
@@ -77,9 +108,18 @@ class VoiceCloningDataset(Dataset):
         self._clean_metadata()
         
         # Filter by split
+        split_counts = self.metadata['split'].value_counts()
+        logger.info(f"\nSplit distribution before filtering:\n{split_counts}")
+        
         self.metadata = self.metadata[self.metadata['split'] == split]
+        logger.info(f"After filtering for '{split}' split: {len(self.metadata)} samples")
         
         if len(self.metadata) == 0:
+            logger.error(f"No samples found for split '{split}'")
+            logger.error("Please check:")
+            logger.error("1. Your metadata.csv has the correct 'split' values")
+            logger.error("2. Audio files exist in the correct location")
+            logger.error("3. The paths in metadata.csv match your audio file structure")
             raise ValueError(f"No samples found for split '{split}'")
         
         # Setup audio parameters
@@ -104,7 +144,7 @@ class VoiceCloningDataset(Dataset):
         self.vocab_size = self.config['model']['text_encoder']['vocab_size']
         self.max_text_len = self.config['dataset'].get('max_text_len', 100)
         
-        logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
+        logger.info(f"Successfully initialized {split} dataset with {len(self.metadata)} samples")
     
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text

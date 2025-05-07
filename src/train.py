@@ -96,18 +96,22 @@ class Trainer:
         # Setup dataloaders
         self.train_loader = DataLoader(
             self.train_dataset,
-            batch_size=self.config['training']['batch_size'],
+            batch_size=min(8, self.config['training']['batch_size']),
             shuffle=True,
-            num_workers=4,
-            pin_memory=True
+            num_workers=2,
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=2
         )
         
         self.val_loader = DataLoader(
             self.val_dataset,
-            batch_size=self.config['training']['batch_size'],
+            batch_size=min(8, self.config['training']['batch_size']),
             shuffle=False,
-            num_workers=4,
-            pin_memory=True
+            num_workers=2,
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=2
         )
         
         logger.info(f"Initialized trainer with {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples")

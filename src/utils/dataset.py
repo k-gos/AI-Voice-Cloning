@@ -302,10 +302,9 @@ class VoiceCloningDataset(Dataset):
     
     def get_speaker_embedding(self, speaker_id: str) -> torch.Tensor:
         """Get speaker embedding"""
-        # For now, return a random embedding
-        # In a real implementation, this would load a pre-computed embedding
-        embedding_dim = self.config['model']['speaker_encoder'].get('embedding_dim', 256)
-        return torch.randn(embedding_dim)
+        # For now, return a random embedding of the correct input_dim
+        input_dim = self.config['model']['speaker_encoder'].get('input_dim', 80)
+        return torch.randn(input_dim)
     
     def get_emotion_embedding(self, emotion: str) -> torch.Tensor:
         """Get emotion embedding"""

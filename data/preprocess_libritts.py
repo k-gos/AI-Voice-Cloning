@@ -42,6 +42,15 @@ for split in splits:
                     duration = sf.info(wav_path).duration
                     # Relative path for metadata
                     rel_audio_path = os.path.relpath(wav_path, PROCESSED_ROOT).replace("\\", "/")
+                    # Set split value for compatibility
+                    if split.startswith("train-"):
+                        split_value = "train"
+                    elif split.startswith("dev-"):
+                        split_value = "val"
+                    elif split.startswith("test-"):
+                        split_value = "test"
+                    else:
+                        split_value = split
                     # Add to metadata
                     metadata.append({
                         "audio_path": rel_audio_path,
@@ -49,7 +58,7 @@ for split in splits:
                         "speaker_id": speaker,
                         "emotion": "neutral",
                         "duration": duration,
-                        "split": split.replace("-", "_")
+                        "split": split_value
                     })
 
 # Save metadata

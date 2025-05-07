@@ -67,10 +67,27 @@ class VoiceCloningDataset(Dataset):
         # Setup max length
         self.max_audio_len = max_audio_len or self.config['dataset']['max_audio_len']
         
+        # Setup text processing
+        self.vocab_size = self.config['model']['text_encoder']['vocab_size']
+        self.max_text_len = 100  # Maximum text sequence length
+        
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
     
     def __len__(self) -> int:
         return len(self.metadata)
+    
+    def _text_to_indices(self, text: str) -> torch.Tensor:
+        """Convert text to token indices"""
+        # Simple character-level tokenization
+        chars = list(text.lower())
+        # Convert characters to indices (0-255 for ASCII)
+        indices = [ord(c) % self.vocab_size for c in chars]
+        # Pad or truncate to max_text_len
+        if len(indices) > self.max_text_len:
+            indices = indices[:self.max_text_len]
+        else:
+            indices = indices + [0] * (self.max_text_len - len(indices))
+        return torch.tensor(indices, dtype=torch.long)
     
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Get dataset item"""
@@ -121,11 +138,14 @@ class VoiceCloningDataset(Dataset):
         emotion = row['emotion']
         emotion_embedding = self.get_emotion_embedding(emotion)
         
+        # Convert text to indices
+        text_indices = self._text_to_indices(row['text'])
+        
         # Create item
         item = {
             'audio': waveform,
             'mel_spec': mel_spec,
-            'text': row['text'],
+            'text': text_indices,  # Now using indices instead of raw text
             'speaker_id': speaker_id,
             'emotion': self.emotion_to_idx[emotion],
             'speaker_embedding': speaker_embedding,

@@ -41,8 +41,22 @@ class VoiceCloningDataset(Dataset):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
-        # Load metadata
-        self.metadata = pd.read_csv(metadata_path)
+        # Load metadata with explicit dtypes
+        self.metadata = pd.read_csv(
+            metadata_path,
+            dtype={
+                'text': str,
+                'audio_path': str,
+                'speaker_id': str,
+                'emotion': str,
+                'split': str
+            }
+        )
+        
+        # Validate metadata
+        self._validate_metadata()
+        
+        # Filter by split
         self.metadata = self.metadata[self.metadata['split'] == split]
         
         # Setup audio parameters
@@ -73,11 +87,43 @@ class VoiceCloningDataset(Dataset):
         
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
     
+    def _validate_metadata(self):
+        """Validate metadata format and content"""
+        required_columns = ['text', 'audio_path', 'speaker_id', 'emotion', 'split']
+        
+        # Check required columns
+        missing_columns = [col for col in required_columns if col not in self.metadata.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns in metadata: {missing_columns}")
+        
+        # Check for NaN values
+        nan_columns = self.metadata.columns[self.metadata.isna().any()].tolist()
+        if nan_columns:
+            raise ValueError(f"Found NaN values in columns: {nan_columns}")
+        
+        # Validate text column
+        if not all(isinstance(text, str) for text in self.metadata['text']):
+            raise ValueError("Text column contains non-string values")
+        
+        # Validate audio paths
+        invalid_paths = [path for path in self.metadata['audio_path'] if not Path(path).exists()]
+        if invalid_paths:
+            raise ValueError(f"Found {len(invalid_paths)} invalid audio paths")
+        
+        # Validate emotions
+        invalid_emotions = [emotion for emotion in self.metadata['emotion'] if emotion not in self.emotions]
+        if invalid_emotions:
+            raise ValueError(f"Found invalid emotions: {set(invalid_emotions)}")
+    
     def __len__(self) -> int:
         return len(self.metadata)
     
     def _text_to_indices(self, text: str) -> torch.Tensor:
         """Convert text to token indices"""
+        # Ensure text is string
+        if not isinstance(text, str):
+            text = str(text)
+            
         # Simple character-level tokenization
         chars = list(text.lower())
         # Convert characters to indices (0-255 for ASCII)

@@ -53,11 +53,14 @@ class VoiceCloningDataset(Dataset):
             }
         )
         
-        # Validate metadata
-        self._validate_metadata()
+        # Clean metadata
+        self._clean_metadata()
         
         # Filter by split
         self.metadata = self.metadata[self.metadata['split'] == split]
+        
+        if len(self.metadata) == 0:
+            raise ValueError(f"No samples found for split '{split}'")
         
         # Setup audio parameters
         self.sample_rate = self.config['audio']['sample_rate']
@@ -87,45 +90,88 @@ class VoiceCloningDataset(Dataset):
         
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
     
-    def _validate_metadata(self):
-        """Validate metadata format and content"""
-        required_columns = ['text', 'audio_path', 'speaker_id', 'emotion', 'split']
+    def _clean_metadata(self):
+        """Clean metadata by handling missing values and invalid entries"""
+        # Log initial state
+        initial_rows = len(self.metadata)
+        logger.info(f"Initial metadata rows: {initial_rows}")
         
-        # Check required columns
-        missing_columns = [col for col in required_columns if col not in self.metadata.columns]
-        if missing_columns:
-            raise ValueError(f"Missing required columns in metadata: {missing_columns}")
+        # Handle missing values
+        for column in ['text', 'audio_path', 'speaker_id', 'emotion', 'split']:
+            if column in self.metadata.columns:
+                # Count missing values
+                missing = self.metadata[column].isna().sum()
+                if missing > 0:
+                    logger.warning(f"Found {missing} missing values in column '{column}'")
+                    
+                    if column == 'text':
+                        # Replace NaN text with empty string
+                        self.metadata[column] = self.metadata[column].fillna('')
+                    elif column == 'split':
+                        # Replace NaN split with 'train'
+                        self.metadata[column] = self.metadata[column].fillna('train')
+                    else:
+                        # Drop rows with missing values for other columns
+                        self.metadata = self.metadata.dropna(subset=[column])
         
-        # Check for NaN values
-        nan_columns = self.metadata.columns[self.metadata.isna().any()].tolist()
-        if nan_columns:
-            raise ValueError(f"Found NaN values in columns: {nan_columns}")
-        
-        # Validate text column
-        if not all(isinstance(text, str) for text in self.metadata['text']):
-            raise ValueError("Text column contains non-string values")
+        # Validate and clean text
+        self.metadata['text'] = self.metadata['text'].apply(self._clean_text)
         
         # Validate audio paths
-        invalid_paths = [path for path in self.metadata['audio_path'] if not Path(path).exists()]
-        if invalid_paths:
-            raise ValueError(f"Found {len(invalid_paths)} invalid audio paths")
+        valid_paths = []
+        for path in self.metadata['audio_path']:
+            if pd.isna(path):
+                continue
+            try:
+                if Path(path).exists():
+                    valid_paths.append(True)
+                else:
+                    valid_paths.append(False)
+            except:
+                valid_paths.append(False)
+        
+        self.metadata = self.metadata[valid_paths]
         
         # Validate emotions
-        invalid_emotions = [emotion for emotion in self.metadata['emotion'] if emotion not in self.emotions]
-        if invalid_emotions:
-            raise ValueError(f"Found invalid emotions: {set(invalid_emotions)}")
+        valid_emotions = self.metadata['emotion'].isin(self.emotions)
+        self.metadata = self.metadata[valid_emotions]
+        
+        # Log cleaning results
+        final_rows = len(self.metadata)
+        removed_rows = initial_rows - final_rows
+        if removed_rows > 0:
+            logger.warning(f"Removed {removed_rows} invalid rows during cleaning")
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean and normalize text"""
+        if pd.isna(text):
+            return ''
+        
+        # Convert to string if not already
+        text = str(text)
+        
+        # Convert to lowercase
+        text = text.lower()
+        
+        # Remove special characters and extra whitespace
+        text = re.sub(r'[^\w\s]', '', text)
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Strip leading/trailing whitespace
+        text = text.strip()
+        
+        return text
     
     def __len__(self) -> int:
         return len(self.metadata)
     
     def _text_to_indices(self, text: str) -> torch.Tensor:
         """Convert text to token indices"""
-        # Ensure text is string
-        if not isinstance(text, str):
-            text = str(text)
+        # Ensure text is string and clean
+        text = self._clean_text(text)
             
         # Simple character-level tokenization
-        chars = list(text.lower())
+        chars = list(text)
         # Convert characters to indices (0-255 for ASCII)
         indices = [ord(c) % self.vocab_size for c in chars]
         # Pad or truncate to max_text_len

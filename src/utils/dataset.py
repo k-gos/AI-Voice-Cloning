@@ -37,9 +37,15 @@ class VoiceCloningDataset(Dataset):
             max_audio_len: Maximum audio length in samples
             use_cache: Whether to cache audio files
         """
-        # Load config
+        # Load config first to get emotions list
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
+            
+        # Setup emotion parameters before loading metadata
+        self.emotions = self.config.get('emotion', {}).get('emotions', ['neutral'])
+        if not self.emotions:
+            self.emotions = ['neutral']
+        self.emotion_to_idx = {emotion: idx for idx, emotion in enumerate(self.emotions)}
         
         # Load metadata with explicit dtypes
         self.metadata = pd.read_csv(
@@ -49,9 +55,16 @@ class VoiceCloningDataset(Dataset):
                 'audio_path': str,
                 'speaker_id': str,
                 'emotion': str,
-                'split': str
+                'split': str,
+                'duration': float
             }
         )
+        
+        # Handle missing text values
+        if self.metadata['text'].isna().any():
+            missing_text_count = self.metadata['text'].isna().sum()
+            logger.warning(f"Found {missing_text_count} missing values in column 'text'. Filling with empty string.")
+            self.metadata['text'] = self.metadata['text'].fillna('')
         
         # Clean metadata
         self._clean_metadata()
@@ -71,10 +84,6 @@ class VoiceCloningDataset(Dataset):
         self.fmin = self.config['audio']['fmin']
         self.fmax = self.config['audio']['fmax']
         
-        # Setup emotion parameters
-        self.emotions = self.config['emotion']['emotions']
-        self.emotion_to_idx = {emotion: idx for idx, emotion in enumerate(self.emotions)}
-        
         # Setup cache
         self.use_cache = use_cache
         self.cache_dir = Path(metadata_path).parent / 'cache' / split
@@ -82,85 +91,40 @@ class VoiceCloningDataset(Dataset):
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Setup max length
-        self.max_audio_len = max_audio_len or self.config['dataset']['max_audio_len']
+        self.max_audio_len = max_audio_len or self.config['dataset'].get('max_audio_len', None)
         
         # Setup text processing
         self.vocab_size = self.config['model']['text_encoder']['vocab_size']
-        self.max_text_len = 100  # Maximum text sequence length
+        self.max_text_len = self.config['dataset'].get('max_text_len', 100)
         
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
     
     def _clean_metadata(self):
-        """Clean metadata by handling missing values and invalid entries"""
-        # Log initial state
-        initial_rows = len(self.metadata)
-        logger.info(f"Initial metadata rows: {initial_rows}")
+        """Clean metadata by removing invalid samples"""
+        initial_len = len(self.metadata)
         
-        # Handle missing values
-        for column in ['text', 'audio_path', 'speaker_id', 'emotion', 'split']:
-            if column in self.metadata.columns:
-                # Count missing values
-                missing = self.metadata[column].isna().sum()
-                if missing > 0:
-                    logger.warning(f"Found {missing} missing values in column '{column}'")
-                    
-                    if column == 'text':
-                        # Replace NaN text with empty string
-                        self.metadata[column] = self.metadata[column].fillna('')
-                    elif column == 'split':
-                        # Replace NaN split with 'train'
-                        self.metadata[column] = self.metadata[column].fillna('train')
-                    else:
-                        # Drop rows with missing values for other columns
-                        self.metadata = self.metadata.dropna(subset=[column])
+        # Verify audio paths exist
+        valid_audio = self.metadata['audio_path'].apply(lambda x: os.path.exists(x))
         
-        # Validate and clean text
-        self.metadata['text'] = self.metadata['text'].apply(self._clean_text)
-        
-        # Validate audio paths
-        valid_paths = []
-        for path in self.metadata['audio_path']:
-            if pd.isna(path):
-                continue
-            try:
-                if Path(path).exists():
-                    valid_paths.append(True)
-                else:
-                    valid_paths.append(False)
-            except:
-                valid_paths.append(False)
-        
-        self.metadata = self.metadata[valid_paths]
-        
-        # Validate emotions
+        # Verify emotions are valid
         valid_emotions = self.metadata['emotion'].isin(self.emotions)
-        self.metadata = self.metadata[valid_emotions]
         
-        # Log cleaning results
-        final_rows = len(self.metadata)
-        removed_rows = initial_rows - final_rows
-        if removed_rows > 0:
-            logger.warning(f"Removed {removed_rows} invalid rows during cleaning")
-    
-    def _clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
-        if pd.isna(text):
-            return ''
+        # Verify speaker IDs are not empty
+        valid_speakers = self.metadata['speaker_id'].notna()
         
-        # Convert to string if not already
-        text = str(text)
+        # Verify durations are positive
+        valid_durations = self.metadata['duration'] > 0
         
-        # Convert to lowercase
-        text = text.lower()
+        # Apply all filters
+        self.metadata = self.metadata[valid_audio & valid_emotions & valid_speakers & valid_durations]
         
-        # Remove special characters and extra whitespace
-        text = re.sub(r'[^\w\s]', '', text)
-        text = re.sub(r'\s+', ' ', text)
-        
-        # Strip leading/trailing whitespace
-        text = text.strip()
-        
-        return text
+        removed = initial_len - len(self.metadata)
+        if removed > 0:
+            logger.warning(f"Removed {removed} invalid samples from metadata")
+            logger.warning(f"- Missing audio files: {(~valid_audio).sum()}")
+            logger.warning(f"- Invalid emotions: {(~valid_emotions).sum()}")
+            logger.warning(f"- Invalid speaker IDs: {(~valid_speakers).sum()}")
+            logger.warning(f"- Invalid durations: {(~valid_durations).sum()}")
     
     def __len__(self) -> int:
         return len(self.metadata)

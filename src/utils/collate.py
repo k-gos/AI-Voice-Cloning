@@ -15,18 +15,21 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     max_mel_len = max(item['mel_spec'].size(0) for item in batch)
     max_text_len = max(item['text'].size(0) for item in batch)
     n_mels = batch[0]['mel_spec'].size(1)  # Number of mel bands
-    
+    max_audio_len = max(item['audio'].shape[1] for item in batch)
+
     # Initialize tensors
     batch_size = len(batch)
     mel_specs = torch.zeros(batch_size, max_mel_len, n_mels)
     texts = torch.zeros(batch_size, max_text_len, dtype=torch.long)
     emotions = torch.zeros(batch_size, dtype=torch.long)
     speaker_embeddings = torch.stack([item['speaker_embedding'] for item in batch])
+    audios = torch.zeros(batch_size, 1, max_audio_len)
     
     # Fill tensors
     for i, item in enumerate(batch):
         mel_len = item['mel_spec'].size(0)
         text_len = item['text'].size(0)
+        audio_len = item['audio'].shape[1]
         
         # Ensure mel spectrogram has correct dimensions [time, freq]
         mel_spec = item['mel_spec']
@@ -43,10 +46,14 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         
         # Fill emotion
         emotions[i] = item['emotion']
-    
+
+        # Fill audio (pad if needed)
+        audios[i, 0, :audio_len] = item['audio']
+
     return {
         'mel_spec': mel_specs,  # [batch, time, freq]
         'text': texts,  # [batch, seq_len]
         'emotion': emotions,  # [batch]
-        'speaker_embedding': speaker_embeddings  # [batch, embedding_dim]
+        'speaker_embedding': speaker_embeddings,  # [batch, embedding_dim]
+        'audio': audios  # [batch, 1, audio_len]
     } 

@@ -37,6 +37,8 @@ class VoiceCloningDataset(Dataset):
             max_audio_len: Maximum audio length in samples
             use_cache: Whether to cache audio files
         """
+        self.root_path = Path(metadata_path).parent
+        
         # Load config first to get emotions list
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -58,6 +60,11 @@ class VoiceCloningDataset(Dataset):
                 'split': str,
                 'duration': float
             }
+        )
+        
+        # Convert relative audio paths to absolute paths
+        self.metadata['audio_path'] = self.metadata['audio_path'].apply(
+            lambda x: str(self.root_path / x) if not os.path.isabs(x) else x
         )
         
         # Handle missing text values
@@ -86,7 +93,7 @@ class VoiceCloningDataset(Dataset):
         
         # Setup cache
         self.use_cache = use_cache
-        self.cache_dir = Path(metadata_path).parent / 'cache' / split
+        self.cache_dir = self.root_path / 'cache' / split
         if self.use_cache:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         
@@ -98,6 +105,33 @@ class VoiceCloningDataset(Dataset):
         self.max_text_len = self.config['dataset'].get('max_text_len', 100)
         
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean and normalize text
+        
+        Args:
+            text: Input text
+            
+        Returns:
+            Cleaned text
+        """
+        if pd.isna(text):
+            return ''
+            
+        # Convert to string if not already
+        text = str(text)
+        
+        # Convert to lowercase
+        text = text.lower()
+        
+        # Remove special characters and extra whitespace
+        text = re.sub(r'[^\w\s]', '', text)
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Strip leading/trailing whitespace
+        text = text.strip()
+        
+        return text
     
     def _clean_metadata(self):
         """Clean metadata by removing invalid samples"""
@@ -156,99 +190,116 @@ class VoiceCloningDataset(Dataset):
             if cache_path.exists():
                 return torch.load(cache_path)
         
-        # Load and process audio
-        waveform, sr = torchaudio.load(audio_path)
+        try:
+            # Load and process audio
+            waveform, sr = torchaudio.load(audio_path)
+            
+            # Resample if necessary
+            if sr != self.sample_rate:
+                resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+                waveform = resampler(waveform)
+            
+            # Convert to mono
+            if waveform.shape[0] > 1:
+                waveform = torch.mean(waveform, dim=0, keepdim=True)
+            
+            # Trim or pad to max length if specified
+            if self.max_audio_len is not None:
+                if waveform.shape[1] > self.max_audio_len:
+                    waveform = waveform[:, :self.max_audio_len]
+                else:
+                    padding = self.max_audio_len - waveform.shape[1]
+                    waveform = torch.nn.functional.pad(waveform, (0, padding))
+            
+            # Compute mel spectrogram
+            mel_transform = torchaudio.transforms.MelSpectrogram(
+                sample_rate=self.sample_rate,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                win_length=self.win_length,
+                n_mels=self.n_mels,
+                f_min=self.fmin,
+                f_max=self.fmax
+            )
+            mel_spec = mel_transform(waveform)
+            
+        except Exception as e:
+            logger.error(f"Error processing audio file {audio_path}: {str(e)}")
+            raise
         
-        # Resample if necessary
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            waveform = resampler(waveform)
-        
-        # Convert to mono
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-        
-        # Trim or pad to max length
-        if waveform.shape[1] > self.max_audio_len:
-            waveform = waveform[:, :self.max_audio_len]
-        else:
-            padding = self.max_audio_len - waveform.shape[1]
-            waveform = torch.nn.functional.pad(waveform, (0, padding))
-        
-        # Compute mel spectrogram
-        mel_spec = torchaudio.transforms.MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
-            n_mels=self.n_mels,
-            f_min=self.fmin,
-            f_max=self.fmax
-        )(waveform)
-        
-        # Get speaker embedding
-        speaker_id = row['speaker_id']
-        speaker_embedding = self.get_speaker_embedding(speaker_id)
-        
-        # Get emotion embedding
-        emotion = row['emotion']
-        emotion_embedding = self.get_emotion_embedding(emotion)
-        
-        # Convert text to indices
-        text_indices = self._text_to_indices(row['text'])
-        
-        # Create item
-        item = {
-            'audio': waveform,
-            'mel_spec': mel_spec,
-            'text': text_indices,  # Now using indices instead of raw text
-            'speaker_id': speaker_id,
-            'emotion': self.emotion_to_idx[emotion],
-            'speaker_embedding': speaker_embedding,
-            'emotion_embedding': emotion_embedding
-        }
-        
-        # Cache if enabled
-        if self.use_cache:
-            torch.save(item, cache_path)
-        
-        return item
+        try:
+            # Get speaker embedding
+            speaker_id = row['speaker_id']
+            speaker_embedding = self.get_speaker_embedding(speaker_id)
+            
+            # Get emotion embedding
+            emotion = row['emotion']
+            emotion_embedding = self.get_emotion_embedding(emotion)
+            
+            # Convert text to indices
+            text_indices = self._text_to_indices(row['text'])
+            
+            # Create item
+            item = {
+                'audio': waveform,
+                'mel_spec': mel_spec,
+                'text': text_indices,
+                'speaker_id': speaker_id,
+                'emotion': self.emotion_to_idx[emotion],
+                'speaker_embedding': speaker_embedding,
+                'emotion_embedding': emotion_embedding
+            }
+            
+            # Cache if enabled
+            if self.use_cache:
+                torch.save(item, cache_path)
+            
+            return item
+            
+        except Exception as e:
+            logger.error(f"Error creating dataset item for index {idx}: {str(e)}")
+            raise
     
     def get_speaker_embedding(self, speaker_id: str) -> torch.Tensor:
         """Get speaker embedding"""
         # For now, return a random embedding
         # In a real implementation, this would load a pre-computed embedding
-        return torch.randn(self.config['model']['speaker_encoder']['embedding_dim'])
+        embedding_dim = self.config['model']['speaker_encoder'].get('embedding_dim', 256)
+        return torch.randn(embedding_dim)
     
     def get_emotion_embedding(self, emotion: str) -> torch.Tensor:
         """Get emotion embedding"""
         # For now, return a random embedding
         # In a real implementation, this would load a pre-computed embedding
-        return torch.randn(self.config['model']['emotion_encoder']['embedding_dim'])
+        embedding_dim = self.config['model']['emotion_encoder'].get('embedding_dim', 64)
+        return torch.randn(embedding_dim)
 
-def get_dataloader(root_path: str,
-                  split: str = "train",
-                  batch_size: int = 16,
-                  num_workers: int = 4,
-                  max_audio_length: float = 10.0,
-                  use_cache: bool = True) -> DataLoader:
+def get_dataloader(
+    root_path: str = "data/processed",
+    split: str = "train",
+    batch_size: int = 16,
+    num_workers: int = 4,
+    max_audio_length: Optional[int] = None,
+    use_cache: bool = True
+) -> DataLoader:
     """
     Get dataloader for voice cloning dataset
     
     Args:
-        root_path: Path to dataset root
+        root_path: Path to dataset root (defaults to 'data/processed')
         split: Dataset split (train/val/test)
         batch_size: Batch size
         num_workers: Number of workers for data loading
-        max_audio_length: Maximum audio length in seconds
+        max_audio_length: Maximum audio length in samples
         use_cache: Whether to use cached features
         
     Returns:
         DataLoader: PyTorch dataloader
     """
+    root_path = Path(root_path)
     dataset = VoiceCloningDataset(
         metadata_path=root_path / "metadata.csv",
-        config_path=root_path / "config" / "config.yaml",
+        config_path=Path("config.yaml"),  # Config file in the root directory
         split=split,
         max_audio_len=max_audio_length,
         use_cache=use_cache

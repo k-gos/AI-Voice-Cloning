@@ -41,7 +41,7 @@ class VoiceCloningModel(nn.Module):
         self,
         text: torch.Tensor,
         speaker_embedding: torch.Tensor,
-        emotion_embedding: torch.Tensor,
+        emotion_embedding: torch.Tensor,  # This is now emotion indices
         target_mel: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         # Encode text
@@ -49,7 +49,7 @@ class VoiceCloningModel(nn.Module):
         
         # Encode speaker and emotion
         speaker_features = self.speaker_encoder(speaker_embedding)
-        emotion_features, emotion_logits = self.emotion_encoder(emotion_embedding)
+        emotion_features, emotion_logits = self.emotion_encoder(emotion_embedding)  # emotion_embedding is now indices
         
         # Combine features
         combined_features = torch.cat([

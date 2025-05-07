@@ -140,16 +140,11 @@ class Trainer:
                 for sid in speaker_ids
             ]).to(self.device)
             
-            emotion_embeddings = torch.stack([
-                self.train_dataset.get_emotion_embedding(self.config['emotion']['emotions'][e])
-                for e in emotion_targets
-            ]).to(self.device)
-            
             # Forward pass
             outputs = self.model(
                 text=text,
                 speaker_embedding=speaker_embeddings,
-                emotion_embedding=emotion_embeddings,
+                emotion_embedding=emotion_targets,
                 target_mel=mel_spec
             )
             
@@ -220,7 +215,7 @@ class Trainer:
                 outputs = self.model(
                     text=text,
                     speaker_embedding=speaker_embeddings,
-                    emotion_embedding=emotion_embeddings,
+                    emotion_embedding=emotion_targets,
                     target_mel=mel_spec
                 )
                 

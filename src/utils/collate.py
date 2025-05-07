@@ -12,9 +12,9 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         Collated batch with consistent dimensions
     """
     # Get max lengths
-    max_mel_len = max(item['mel_spec'].size(0) for item in batch)
-    max_text_len = max(item['text'].size(0) for item in batch)
-    n_mels = batch[0]['mel_spec'].size(1)  # Number of mel bands
+    max_mel_len = max(len(item['mel_spec']) for item in batch)
+    max_text_len = max(len(item['text']) for item in batch)
+    n_mels = batch[0]['mel_spec'].shape[1]  # Number of mel bands
     max_audio_len = max(item['audio'].shape[1] for item in batch)
 
     # Initialize tensors
@@ -27,8 +27,8 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     
     # Fill tensors
     for i, item in enumerate(batch):
-        mel_len = item['mel_spec'].size(0)
-        text_len = item['text'].size(0)
+        mel_len = len(item['mel_spec'])
+        text_len = len(item['text'])
         audio_len = item['audio'].shape[1]
         
         # Ensure mel spectrogram has correct dimensions [time, freq]

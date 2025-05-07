@@ -125,11 +125,14 @@ class Trainer:
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch}")
         for batch in pbar:
             # Move batch to device
-            audio = batch['audio'].to(self.device)
-            mel_spec = batch['mel_spec'].to(self.device)
+            for k in batch:
+                if torch.is_tensor(batch[k]):
+                    batch[k] = batch[k].to(self.device)
+            audio = batch['audio']
+            mel_spec = batch['mel_spec']
             text = batch['text']
             speaker_ids = batch['speaker_id']
-            emotion_targets = batch['emotion'].to(self.device)
+            emotion_targets = batch['emotion']
             
             # Get speaker and emotion embeddings
             speaker_embeddings = torch.stack([
@@ -193,11 +196,14 @@ class Trainer:
         with torch.no_grad():
             for batch in tqdm(self.val_loader, desc="Validation"):
                 # Move batch to device
-                audio = batch['audio'].to(self.device)
-                mel_spec = batch['mel_spec'].to(self.device)
+                for k in batch:
+                    if torch.is_tensor(batch[k]):
+                        batch[k] = batch[k].to(self.device)
+                audio = batch['audio']
+                mel_spec = batch['mel_spec']
                 text = batch['text']
                 speaker_ids = batch['speaker_id']
-                emotion_targets = batch['emotion'].to(self.device)
+                emotion_targets = batch['emotion']
                 
                 # Get speaker and emotion embeddings
                 speaker_embeddings = torch.stack([

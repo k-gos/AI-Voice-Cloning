@@ -68,6 +68,9 @@ class VoiceCloningModel(nn.Module):
         
         # Decode mel spectrogram
         if target_mel is not None:
+            # Ensure target_mel has correct dimensions [batch, time, freq]
+            if len(target_mel.shape) == 3 and target_mel.shape[1] != target_mel.size(1):  # [batch, freq, time]
+                target_mel = target_mel.transpose(1, 2)
             mel_output = self.decoder(target_mel, combined_features)
         else:
             # Generate mel spectrogram autoregressively

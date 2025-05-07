@@ -29,6 +29,7 @@ from models.emotion_encoder import EmotionLoss
 from data.dataset_loader import get_dataloader
 from src.utils.audio import save_audio
 from src.utils.dataset import VoiceCloningDataset
+from src.utils.collate import collate_fn
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -101,7 +102,8 @@ class Trainer:
             num_workers=2,
             pin_memory=True,
             persistent_workers=True,
-            prefetch_factor=2
+            prefetch_factor=2,
+            collate_fn=collate_fn
         )
         
         self.val_loader = DataLoader(
@@ -111,7 +113,8 @@ class Trainer:
             num_workers=2,
             pin_memory=True,
             persistent_workers=True,
-            prefetch_factor=2
+            prefetch_factor=2,
+            collate_fn=collate_fn
         )
         
         logger.info(f"Initialized trainer with {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples")

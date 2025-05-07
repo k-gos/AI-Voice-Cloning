@@ -44,17 +44,21 @@ class VoiceCloningModel(nn.Module):
         emotion_embedding: torch.Tensor,  # This is now emotion indices
         target_mel: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
+        # Verify input dimensions
+        if len(text.shape) != 2:  # [batch, seq_len]
+            raise ValueError(f"Expected text of shape [batch, seq_len], got {text.shape}")
+        if len(speaker_embedding.shape) != 2:  # [batch, embedding_dim]
+            raise ValueError(f"Expected speaker_embedding of shape [batch, embedding_dim], got {speaker_embedding.shape}")
+        if len(emotion_embedding.shape) != 1:  # [batch]
+            raise ValueError(f"Expected emotion_embedding of shape [batch], got {emotion_embedding.shape}")
+        
         # Encode text
-        text_features = self.text_encoder(text)
+        text_features = self.text_encoder(text)  # [batch, seq_len, dim]
         
         # Encode speaker and emotion
-        speaker_features = self.speaker_encoder(speaker_embedding)
-        emotion_features, emotion_logits = self.emotion_encoder(emotion_embedding)  # emotion_embedding is now indices
+        speaker_features = self.speaker_encoder(speaker_embedding)  # [batch, dim]
+        emotion_features, emotion_logits = self.emotion_encoder(emotion_embedding)  # [batch, dim]
         
-        # Ensure consistent dimensions for feature combination
-        if len(text_features.shape) != 3:  # Should be [batch, seq_len, dim]
-            raise ValueError(f"Expected text_features of shape [batch, seq_len, dim], got {text_features.shape}")
-            
         # Expand speaker and emotion features to match text sequence length
         speaker_features = speaker_features.unsqueeze(1).expand(-1, text_features.size(1), -1)
         emotion_features = emotion_features.unsqueeze(1).expand(-1, text_features.size(1), -1)
@@ -64,13 +68,13 @@ class VoiceCloningModel(nn.Module):
             text_features,
             speaker_features,
             emotion_features
-        ], dim=-1)
+        ], dim=-1)  # [batch, seq_len, combined_dim]
         
         # Decode mel spectrogram
         if target_mel is not None:
-            # Ensure target_mel has correct dimensions [batch, time, freq]
-            if len(target_mel.shape) == 3 and target_mel.shape[1] != target_mel.size(1):  # [batch, freq, time]
-                target_mel = target_mel.transpose(1, 2)
+            # Verify target_mel dimensions
+            if len(target_mel.shape) != 3:  # [batch, time, freq]
+                raise ValueError(f"Expected target_mel of shape [batch, time, freq], got {target_mel.shape}")
             mel_output = self.decoder(target_mel, combined_features)
         else:
             # Generate mel spectrogram autoregressively
@@ -80,9 +84,9 @@ class VoiceCloningModel(nn.Module):
         waveform = self.vocoder(mel_output)
         
         return {
-            'mel_output': mel_output,
-            'waveform': waveform,
-            'emotion_logits': emotion_logits
+            'mel_output': mel_output,  # [batch, time, freq]
+            'waveform': waveform,  # [batch, time]
+            'emotion_logits': emotion_logits  # [batch, num_emotions]
         }
     
     def _generate_mel(self, features: torch.Tensor) -> torch.Tensor:

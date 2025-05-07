@@ -30,18 +30,23 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         
         # Ensure mel spectrogram has correct dimensions [time, freq]
         mel_spec = item['mel_spec']
-        if len(mel_spec.shape) == 3:  # [batch, time, freq]
-            mel_spec = mel_spec.squeeze(0)
-        elif len(mel_spec.shape) == 2 and mel_spec.shape[0] != mel_len:  # [freq, time]
-            mel_spec = mel_spec.transpose(0, 1)
+        if len(mel_spec.shape) != 2:
+            raise ValueError(f"Expected mel_spec of shape [time, freq], got {mel_spec.shape}")
+        if mel_spec.shape[1] != n_mels:
+            raise ValueError(f"Expected {n_mels} mel bands, got {mel_spec.shape[1]}")
         
-        mel_specs[i, :mel_len] = mel_spec
+        # Fill mel spectrogram
+        mel_specs[i, :mel_len, :] = mel_spec
+        
+        # Fill text
         texts[i, :text_len] = item['text']
+        
+        # Fill emotion
         emotions[i] = item['emotion']
     
     return {
-        'mel_spec': mel_specs,
-        'text': texts,
-        'emotion': emotions,
-        'speaker_embedding': speaker_embeddings
+        'mel_spec': mel_specs,  # [batch, time, freq]
+        'text': texts,  # [batch, seq_len]
+        'emotion': emotions,  # [batch]
+        'speaker_embedding': speaker_embeddings  # [batch, embedding_dim]
     } 

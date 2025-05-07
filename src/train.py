@@ -78,7 +78,7 @@ class Trainer:
         
         # Setup datasets
         self.train_dataset = VoiceCloningDataset(
-            metadata_path=self.data_dir / 'processed' / 'metadata.csv',
+            metadata_path=self.data_dir / 'metadata.csv',
             config_path=config_path,
             split='train',
             max_audio_len=self.config['dataset']['max_audio_len'],
@@ -86,7 +86,7 @@ class Trainer:
         )
         
         self.val_dataset = VoiceCloningDataset(
-            metadata_path=self.data_dir / 'processed' / 'metadata.csv',
+            metadata_path=self.data_dir / 'metadata.csv',
             config_path=config_path,
             split='val',
             max_audio_len=self.config['dataset']['max_audio_len'],

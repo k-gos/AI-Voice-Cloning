@@ -58,22 +58,13 @@ class VoiceCloningDataset(Dataset):
         self.emotions = self.config['emotion']['emotions']
         self.emotion_to_idx = {emotion: idx for idx, emotion in enumerate(self.emotions)}
         
-        # Setup transforms
-        self.mel_transform = torchaudio.transforms.MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
-            n_mels=self.n_mels,
-            f_min=self.fmin,
-            f_max=self.fmax
-        )
-        
         # Setup cache
         self.use_cache = use_cache
-        self.cache = {}
+        self.cache_dir = Path(metadata_path).parent / 'cache' / split
+        if self.use_cache:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Setup max audio length
+        # Setup max length
         self.max_audio_len = max_audio_len or self.config['dataset']['max_audio_len']
         
         logger.info(f"Initialized {split} dataset with {len(self.metadata)} samples")
@@ -83,65 +74,81 @@ class VoiceCloningDataset(Dataset):
     
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Get dataset item"""
-        # Get metadata
         row = self.metadata.iloc[idx]
         
         # Load audio
         audio_path = Path(row['audio_path'])
-        if self.use_cache and audio_path in self.cache:
-            waveform = self.cache[audio_path]
-        else:
-            waveform, sr = torchaudio.load(audio_path)
-            
-            # Resample if necessary
-            if sr != self.sample_rate:
-                resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-                waveform = resampler(waveform)
-            
-            # Convert to mono
-            if waveform.shape[0] > 1:
-                waveform = torch.mean(waveform, dim=0, keepdim=True)
-            
-            # Cache if enabled
-            if self.use_cache:
-                self.cache[audio_path] = waveform
+        if self.use_cache:
+            cache_path = self.cache_dir / f"{idx}.pt"
+            if cache_path.exists():
+                return torch.load(cache_path)
         
-        # Trim or pad audio
+        # Load and process audio
+        waveform, sr = torchaudio.load(audio_path)
+        
+        # Resample if necessary
+        if sr != self.sample_rate:
+            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+            waveform = resampler(waveform)
+        
+        # Convert to mono
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        
+        # Trim or pad to max length
         if waveform.shape[1] > self.max_audio_len:
             waveform = waveform[:, :self.max_audio_len]
         else:
-            waveform = torch.nn.functional.pad(
-                waveform,
-                (0, self.max_audio_len - waveform.shape[1])
-            )
+            padding = self.max_audio_len - waveform.shape[1]
+            waveform = torch.nn.functional.pad(waveform, (0, padding))
         
         # Compute mel spectrogram
-        mel_spec = self.mel_transform(waveform)
+        mel_spec = torchaudio.transforms.MelSpectrogram(
+            sample_rate=self.sample_rate,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+            n_mels=self.n_mels,
+            f_min=self.fmin,
+            f_max=self.fmax
+        )(waveform)
         
-        # Get emotion label
+        # Get speaker embedding
+        speaker_id = row['speaker_id']
+        speaker_embedding = self.get_speaker_embedding(speaker_id)
+        
+        # Get emotion embedding
         emotion = row['emotion']
-        emotion_idx = self.emotion_to_idx[emotion]
+        emotion_embedding = self.get_emotion_embedding(emotion)
         
-        return {
+        # Create item
+        item = {
             'audio': waveform,
             'mel_spec': mel_spec,
             'text': row['text'],
-            'speaker_id': row['speaker_id'],
-            'emotion': emotion_idx,
-            'duration': row['duration']
+            'speaker_id': speaker_id,
+            'emotion': self.emotion_to_idx[emotion],
+            'speaker_embedding': speaker_embedding,
+            'emotion_embedding': emotion_embedding
         }
+        
+        # Cache if enabled
+        if self.use_cache:
+            torch.save(item, cache_path)
+        
+        return item
     
     def get_speaker_embedding(self, speaker_id: str) -> torch.Tensor:
-        """Get speaker embedding for a given speaker ID"""
-        # This is a placeholder - in a real implementation, you would load
-        # pre-computed speaker embeddings or compute them on the fly
-        return torch.randn(256)  # 256 is the speaker embedding dimension
+        """Get speaker embedding"""
+        # For now, return a random embedding
+        # In a real implementation, this would load a pre-computed embedding
+        return torch.randn(self.config['model']['speaker_encoder']['embedding_dim'])
     
     def get_emotion_embedding(self, emotion: str) -> torch.Tensor:
-        """Get emotion embedding for a given emotion"""
-        # This is a placeholder - in a real implementation, you would load
-        # pre-computed emotion embeddings or compute them on the fly
-        return torch.randn(256)  # 256 is the emotion embedding dimension
+        """Get emotion embedding"""
+        # For now, return a random embedding
+        # In a real implementation, this would load a pre-computed embedding
+        return torch.randn(self.config['model']['emotion_encoder']['embedding_dim'])
 
 def get_dataloader(root_path: str,
                   split: str = "train",

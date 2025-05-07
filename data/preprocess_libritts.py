@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import soundfile as sf
+import numpy as np
 
 RAW_ROOT = "data/raw/libritts/LibriTTS"
 PROCESSED_ROOT = "data/processed"
@@ -64,5 +65,14 @@ for split in splits:
 # Save metadata
 os.makedirs(PROCESSED_ROOT, exist_ok=True)
 df_out = pd.DataFrame(metadata)
+
+# If no val samples, split 10% of train as val
+if (df_out['split'] == 'val').sum() == 0:
+    train_idx = df_out[df_out['split'] == 'train'].index
+    val_size = int(0.1 * len(train_idx))
+    val_idx = np.random.choice(train_idx, size=val_size, replace=False)
+    df_out.loc[val_idx, 'split'] = 'val'
+    print(f"Randomly assigned {val_size} samples from train to val split.")
+
 df_out.to_csv(METADATA_OUT, index=False)
 print(f"Saved metadata with {len(df_out)} entries to {METADATA_OUT}") 

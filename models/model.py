@@ -28,100 +28,14 @@ except ImportError:
 Main voice cloning model implementation
 """
 
-class TextEncoder(nn.Module):
-    def __init__(self, config: Dict):
-        super().__init__()
-        self.embedding = nn.Embedding(config['vocab_size'], config['embedding_dim'])
-        self.encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=config['embedding_dim'],
-                nhead=8,
-                dim_feedforward=config['hidden_dim'],
-                dropout=0.1
-            ),
-            num_layers=config['n_layers']
-        )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.embedding(x)
-        x = x.permute(1, 0, 2)  # [seq_len, batch, dim]
-        x = self.encoder(x)
-        return x.permute(1, 0, 2)  # [batch, seq_len, dim]
-
-class SpeakerEncoder(nn.Module):
-    def __init__(self, config: Dict):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(config['input_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['output_dim'])
-        )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.encoder(x)
-
-class EmotionEncoder(nn.Module):
-    def __init__(self, config: Dict):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(config['input_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['output_dim'])
-        )
-        self.classifier = nn.Linear(config['output_dim'], config['n_emotions'])
-        
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        features = self.encoder(x)
-        logits = self.classifier(features)
-        return features, logits
-
-class Decoder(nn.Module):
-    def __init__(self, config: Dict):
-        super().__init__()
-        self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                d_model=config['input_dim'],
-                nhead=8,
-                dim_feedforward=config['hidden_dim'],
-                dropout=0.1
-            ),
-            num_layers=config['n_layers']
-        )
-        self.output = nn.Linear(config['input_dim'], config['output_dim'])
-        
-    def forward(self, x: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
-        x = x.permute(1, 0, 2)  # [seq_len, batch, dim]
-        memory = memory.permute(1, 0, 2)  # [seq_len, batch, dim]
-        x = self.decoder(x, memory)
-        x = x.permute(1, 0, 2)  # [batch, seq_len, dim]
-        return self.output(x)
-
-class Vocoder(nn.Module):
-    def __init__(self, config: Dict):
-        super().__init__()
-        self.vocoder = nn.Sequential(
-            nn.Linear(config['input_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['hidden_dim']),
-            nn.ReLU(),
-            nn.Linear(config['hidden_dim'], config['output_dim'])
-        )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.vocoder(x)
-
 class VoiceCloningModel(nn.Module):
     def __init__(self, config: Dict):
         super().__init__()
         self.text_encoder = TextEncoder(config['text_encoder'])
         self.speaker_encoder = SpeakerEncoder(config['speaker_encoder'])
         self.emotion_encoder = EmotionEncoder(config['emotion_encoder'])
-        self.decoder = Decoder(config['decoder'])
-        self.vocoder = Vocoder(config['vocoder'])
+        self.decoder = MelSpectrogram2Decoder(config['decoder'])
+        self.vocoder = HiFiGANVocoder(config['vocoder'])
         
     def forward(
         self,

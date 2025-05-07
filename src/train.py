@@ -27,8 +27,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 from models.model import VoiceCloningModel, VoiceCloningLoss
 from models.emotion_encoder import EmotionLoss
 from data.dataset_loader import get_dataloader
-from utils.audio import save_audio
-from utils.dataset import VoiceCloningDataset
+from src.utils.audio import save_audio
+from src.utils.dataset import VoiceCloningDataset
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

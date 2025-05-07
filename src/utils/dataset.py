@@ -262,6 +262,7 @@ class VoiceCloningDataset(Dataset):
                 f_max=self.fmax
             )
             mel_spec = mel_transform(waveform)
+            mel_spec = mel_spec.squeeze(0).transpose(0, 1)
             
         except Exception as e:
             logger.error(f"Error processing audio file {audio_path}: {str(e)}")

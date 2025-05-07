@@ -1,0 +1,74 @@
+# Model Configuration
+model:
+  text_encoder:
+    vocab_size: 256
+    embedding_dim: 512
+    hidden_dim: 1024
+    n_layers: 6
+    dropout: 0.1
+
+  speaker_encoder:
+    input_dim: 80
+    hidden_dim: 512
+    embedding_dim: 256
+    n_layers: 3
+    dropout: 0.1
+
+  emotion_encoder:
+    embedding_dim: 256
+    hidden_dim: 512
+    emotions: ["neutral", "happy", "sad", "angry", "surprised", "fear"]
+
+  decoder:
+    input_dim: 1024
+    hidden_dim: 512
+    output_dim: 80
+    n_layers: 4
+    dropout: 0.1
+
+  vocoder:
+    input_dim: 80
+    hidden_dim: 512
+    output_dim: 1
+    n_layers: 4
+    dropout: 0.1
+
+# Training Configuration
+training:
+  batch_size: 32
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  max_epochs: 1000
+  early_stopping_patience: 10
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 1
+  num_workers: 4
+
+# Audio Processing
+audio:
+  sample_rate: 22050
+  hop_length: 256
+  win_length: 1024
+  n_fft: 1024
+  n_mels: 80
+  fmin: 0
+  fmax: 8000
+
+# Dataset Configuration
+dataset:
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  max_audio_len: 220500 # 10 seconds at 22050 Hz
+  use_cache: true
+
+# Emotion Configuration
+emotion:
+  emotions: ["neutral", "happy", "sad", "angry", "surprised", "fear"]
+  weights:
+    neutral: 1.0
+    happy: 1.0
+    sad: 1.0
+    angry: 1.0
+    surprised: 1.0
+    fear: 1.0

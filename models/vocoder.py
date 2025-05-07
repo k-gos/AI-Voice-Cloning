@@ -14,4 +14,11 @@ class HiFiGANVocoder(nn.Module):
         )
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Handle input dimensions
+        if len(x.shape) == 4:  # [batch, channels, time, freq]
+            x = x.squeeze(1)  # Remove channel dimension
+        elif len(x.shape) != 3:  # Should be [batch, time, freq]
+            raise ValueError(f"Expected input tensor of shape [batch, time, freq] or [batch, channels, time, freq], got {x.shape}")
+            
+        # Process through vocoder
         return self.vocoder(x) 

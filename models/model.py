@@ -51,11 +51,19 @@ class VoiceCloningModel(nn.Module):
         speaker_features = self.speaker_encoder(speaker_embedding)
         emotion_features, emotion_logits = self.emotion_encoder(emotion_embedding)  # emotion_embedding is now indices
         
+        # Ensure consistent dimensions for feature combination
+        if len(text_features.shape) != 3:  # Should be [batch, seq_len, dim]
+            raise ValueError(f"Expected text_features of shape [batch, seq_len, dim], got {text_features.shape}")
+            
+        # Expand speaker and emotion features to match text sequence length
+        speaker_features = speaker_features.unsqueeze(1).expand(-1, text_features.size(1), -1)
+        emotion_features = emotion_features.unsqueeze(1).expand(-1, text_features.size(1), -1)
+        
         # Combine features
         combined_features = torch.cat([
             text_features,
-            speaker_features.unsqueeze(1).expand(-1, text_features.size(1), -1),
-            emotion_features.unsqueeze(1).expand(-1, text_features.size(1), -1)
+            speaker_features,
+            emotion_features
         ], dim=-1)
         
         # Decode mel spectrogram
@@ -78,7 +86,7 @@ class VoiceCloningModel(nn.Module):
         batch_size = features.size(0)
         max_len = 1000  # Maximum sequence length
         
-        # Initialize with zeros
+        # Initialize with zeros [batch, time, freq]
         mel_output = torch.zeros(batch_size, max_len, 80).to(features.device)
         
         # Generate mel spectrogram autoregressively

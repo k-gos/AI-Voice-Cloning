@@ -34,6 +34,7 @@ class VoiceCloningModel(nn.Module):
         self.text_encoder = TextEncoder(config['text_encoder'])
         self.speaker_encoder = SpeakerEncoder(config['speaker_encoder'])
         self.emotion_encoder = EmotionEncoder(config['emotion_encoder'])
+        self.mel_proj = nn.Linear(80, config['decoder']['input_dim'])
         self.decoder = MelSpectrogram2Decoder(config['decoder'])
         self.vocoder = HiFiGANVocoder(config['vocoder'])
         
@@ -75,7 +76,8 @@ class VoiceCloningModel(nn.Module):
             # Verify target_mel dimensions
             if len(target_mel.shape) != 3:  # [batch, time, freq]
                 raise ValueError(f"Expected target_mel of shape [batch, time, freq], got {target_mel.shape}")
-            mel_output = self.decoder(target_mel, combined_features)
+            projected_mel = self.mel_proj(target_mel)  # [B, T, 896]
+            mel_output = self.decoder(projected_mel, combined_features)
         else:
             # Generate mel spectrogram autoregressively
             mel_output = self._generate_mel(combined_features)
@@ -99,7 +101,8 @@ class VoiceCloningModel(nn.Module):
         # Generate mel spectrogram autoregressively
         for i in range(max_len):
             current_mel = mel_output[:, :i+1, :]
-            next_mel = self.decoder(current_mel, features)
+            projected_mel = self.mel_proj(current_mel)
+            next_mel = self.decoder(projected_mel, features)
             mel_output[:, i:i+1, :] = next_mel[:, -1:, :]
             
             # Stop if we predict silence

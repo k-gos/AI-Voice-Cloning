@@ -54,6 +54,8 @@ class DatasetPreparator:
     def prepare_libritts(self, data_dir: Path):
         """Prepare LibriTTS dataset"""
         logger.info("Preparing LibriTTS dataset...")
+
+        print(data_dir)
         
         # Process audio files
         audio_files = []
@@ -94,6 +96,8 @@ class DatasetPreparator:
                 'emotion': 'neutral',  # LibriTTS doesn't have emotion labels
                 'duration': duration
             })
+            if not audio_files:
+                logger.warning("No audio files found in LibriTTS dataset.")
         
         return pd.DataFrame(audio_files)
     
@@ -248,6 +252,8 @@ class DatasetPreparator:
         vctk_df = self.prepare_vctk(data_dir / "vctk")
         common_voice_df = self.prepare_common_voice(data_dir / "common_voice")
         aishell3_df = self.prepare_aishell3(data_dir / "aishell3")
+
+        print(libritts_df.head())
         
         # Combine datasets
         combined_df = pd.concat([
@@ -256,6 +262,11 @@ class DatasetPreparator:
             common_voice_df,
             aishell3_df
         ], ignore_index=True)
+
+        # Check if combined_df is empty
+        if combined_df.empty:
+            logger.warning("No data found in any dataset. Exiting.")
+            return
         
         # Split into train/val/test
         train_df, temp_df = train_test_split(

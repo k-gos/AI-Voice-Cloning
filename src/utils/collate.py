@@ -23,6 +23,7 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     texts = torch.zeros(batch_size, max_text_len, dtype=torch.long)
     emotions = torch.zeros(batch_size, dtype=torch.long)
     speaker_embeddings = torch.stack([item['speaker_embedding'] for item in batch])
+    speaker_ids = [item['speaker_id'] for item in batch]  # Collect speaker IDs
     audios = torch.zeros(batch_size, 1, max_audio_len)
     
     # Fill tensors
@@ -55,5 +56,6 @@ def collate_fn(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         'text': texts,  # [batch, seq_len]
         'emotion': emotions,  # [batch]
         'speaker_embedding': speaker_embeddings,  # [batch, embedding_dim]
+        'speaker_id': speaker_ids,  # [batch]
         'audio': audios  # [batch, 1, audio_len]
     } 

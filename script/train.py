@@ -22,7 +22,7 @@ def main():
     parser.add_argument('--output_dir', type=str, required=True,
                       help='Path to save checkpoints and logs')
     parser.add_argument('--num_epochs', type=int, default=1000,
-                      help='Number of epochs to train')
+                      help='Number of epochs to train') 
     parser.add_argument('--cpu', action='store_true',
                       help='Force CPU training')
     parser.add_argument('--resume', type=str, default=None,

@@ -58,6 +58,7 @@ class Trainer:
         
         # Setup device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(torch.cuda.is_available())
         logger.info(f"Using device: {self.device}")
         
         # Initialize model
@@ -120,6 +121,7 @@ class Trainer:
         logger.info(f"Initialized trainer with {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples")
     
     def train_epoch(self, epoch: int) -> Dict[str, float]:
+        print(f"Training on device: {next(self.model.parameters()).device}")
         """Train for one epoch"""
         self.model.train()
         total_mel_loss = 0

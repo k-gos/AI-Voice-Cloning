@@ -52,3 +52,6 @@ dataset:
   max_audio_len: 220500
   max_text_len: 200
   use_cache: true
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
